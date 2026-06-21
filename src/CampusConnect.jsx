@@ -7,26 +7,36 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOu
 import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, query, where, getDocs, onSnapshot, orderBy, limit, addDoc, writeBatch, arrayUnion } from 'firebase/firestore';
 
 
-// Firebase configuration - REPLACE WITH YOUR ACTUAL CONFIG
+// Firebase configuration loaded from environment variables
 const firebaseConfig = {
-  apiKey: "AIzaSyCMkWX4yKIpEeGi6SJF5Q_gaxWZalYoZM0",
-  authDomain: "campusconnect-369c0.firebaseapp.com",
-  projectId: "campusconnect-369c0",
-  storageBucket: "campusconnect-369c0.firebasestorage.app",
-  messagingSenderId: "645916531002",
-  appId: "1:645916531002:web:02ea0c0bd45fb68a52d803"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-
+// Check if Firebase configuration is complete and not using placeholder values
+const isFirebaseConfigured = 
+  firebaseConfig.apiKey && 
+  firebaseConfig.apiKey !== "YOUR_FIREBASE_API_KEY" && 
+  !firebaseConfig.apiKey.startsWith("YOUR_") &&
+  firebaseConfig.projectId &&
+  firebaseConfig.projectId !== "YOUR_PROJECT_ID";
 
 // Initialize Firebase
 let app, auth, db;
-try {
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-} catch (error) {
-  console.error('Firebase initialization error:', error);
+if (isFirebaseConfigured) {
+  try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } catch (error) {
+    console.error('Firebase initialization error:', error);
+  }
+} else {
+  console.warn('Firebase is not configured or using placeholder values. Running in Demo Mode.');
 }
 
 // Configure Google Provider with college domain restriction
@@ -2530,21 +2540,29 @@ const CampusConnect = () => {
       setError('Failed to leave project. Please try again.');
     }
   };
-  // Call Gemini AI API (using Anthropic API in claude.ai)
+  // Call Gemini AI API
   const callGeminiAPI = async (prompt) => {
+    const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    const isGeminiConfigured = geminiKey && geminiKey !== "YOUR_GEMINI_API_KEY" && !geminiKey.startsWith("YOUR_");
+
+    if (!isGeminiConfigured) {
+      return `[Demo Mode - Gemini AI not configured] I received your prompt: "${prompt}". Please configure VITE_GEMINI_API_KEY in your .env file to enable live AI responses.`;
+    }
+
     try {
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyCqiH1L536PYMKD49l-DzobaqNR9VTr4gI', {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [
+          contents: [
             {
-              role: 'user',
-              content: `You are Gemini AI assistant helping a project team. Answer this question concisely and helpfully: ${prompt}`
+              parts: [
+                {
+                  text: `You are Gemini AI assistant helping a project team. Answer this question concisely and helpfully: ${prompt}`
+                }
+              ]
             }
           ]
         })
@@ -2552,12 +2570,13 @@ const CampusConnect = () => {
 
       const data = await response.json();
 
-      // Extract text from response
-      if (data.content && data.content.length > 0) {
-        return data.content[0].text;
+      // Extract text from Google Gemini API response structure
+      if (data.candidates && data.candidates[0]?.content?.parts && data.candidates[0].content.parts[0]?.text) {
+        return data.candidates[0].content.parts[0].text;
       }
 
-      return 'Sorry, I received an unexpected response format.';
+      console.error('Unexpected Gemini API response:', data);
+      return 'Sorry, I received an unexpected response format from Gemini.';
     } catch (err) {
       console.error('Error calling Gemini API:', err);
       return 'Sorry, I encountered an error processing your request. Please try again.';
